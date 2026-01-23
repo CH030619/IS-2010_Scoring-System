@@ -4,6 +4,12 @@ from openpyxl import load_workbook
 import re
 import io
 
+# To secure the code
+password = st.text_input("Enter Access Code", type="password")
+if password != "TEK2026":
+    st.info("Please enter the correct access code.")
+    st.stop() 
+
 # 1. Page Setting
 st.set_page_config(page_title="IS 2010 Scoring System", layout="wide")
 st.title("IS 2010 Scoring System")
@@ -204,4 +210,5 @@ if st.session_state['grading_done']:
 
 else:
     if not prof_file or not student_files:
+
         st.info("Please upload the Professor's file and Student's files to start.")
