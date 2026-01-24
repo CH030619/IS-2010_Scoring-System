@@ -14,12 +14,14 @@ if password != "TEK2026":
 st.set_page_config(page_title="IS 2010 Scoring System", layout="wide")
 st.title("IS 2010 Scoring System")
 
-# Initialize session state
-if 'grading_done' not in st.session_state:
+def reset_grading():
     st.session_state['grading_done'] = False
     st.session_state['summary_df'] = None
     st.session_state['wrong_df'] = None
     st.session_state['total_questions'] = 0
+if 'grading_done' not in st.session_state:
+    reset_grading()
+
 
 # --- Step 1: Professor's Color Guide ---
 with st.expander("IMPORTANT: Professor's Color Guide", expanded=True):
@@ -42,9 +44,9 @@ st.divider()
 # --- 2. File uploaders ---
 col1, col2 = st.columns(2)
 with col1:
-    prof_file = st.file_uploader("1. Upload Professor's File", type=['xlsx'], key="prof")
+    prof_file = st.file_uploader("1. Upload Professor's File", type=['xlsx'], key="prof", on_change = reset_grading)
 with col2:
-    student_files = st.file_uploader("2. Upload Student's File(s)", type=['xlsx'], accept_multiple_files=True, key="stud")
+    student_files = st.file_uploader("2. Upload Student's File(s)", type=['xlsx'], accept_multiple_files=True, key="stud", on_change = reset_grading)
 
 # --- 3. Grading Logic & UI Section ---
 if prof_file and student_files:
@@ -52,7 +54,7 @@ if prof_file and student_files:
     
     # [Security] Validation for misplaced files
     is_valid_upload = True
-    uid_pattern = re.compile(r'[uU]\d{7}')
+    uid_pattern = re.compile(r'[uU]\d{7}(?!\d)')
 
     # Check if professor's slot contains a student file
     if uid_pattern.search(prof_file.name):
@@ -116,7 +118,7 @@ if prof_file and student_files:
 
             # Grading Students
             progress_bar = st.progress(0)
-            st.warning("**System Note:** Processing valid student files. Any file without a proper UnID has been excluded from this run.")
+            st.warning("**System Note:** Processing valid student files. Any file without a proper UNID has been excluded from this run.")
 
             # --- Grading Students (Optimized) ---
             progress_bar = st.progress(0)
@@ -214,25 +216,35 @@ if st.session_state['grading_done']:
                 st.balloons()
                 st.success(f"Perfect Score! Student **{selected_uid}** correctly completed all tasks.")
             else:
+                
                 for idx, row in display_df.iterrows():
-                    p_ans = row['Prof Formula'] if row['Prof Formula'] else row['Prof Value']
-                    s_ans = row['Student Formula'] if row['Student Formula'] else row['Student Value']
+                    f_prof_clean = str(row['Prof Formula']).strip().upper() if row['Prof Formula'] else ""
+                    f_stud_clean = str(row['Student Formula']).strip().upper() if row['Student Formula'] else ""
                     
+                    is_logic_same = (f_prof_clean == f_stud_clean) and (f_prof_clean != "")
+
+                    if is_logic_same:
+                        p_ans = f"{row['Prof Formula']} ({row['Prof Value']})"
+                        s_ans = f"{row['Student Formula']} ({row['Student Value']})"
+                    else:
+                        p_ans = row['Prof Formula'] if row['Prof Formula'] else row['Prof Value']
+                        s_ans = row['Student Formula'] if row['Student Formula'] else row['Student Value']
+
                     with st.container(border=True):
                         st.markdown(f"**Item {idx+1} (Cell {row['Cell']} / Sheet: {row['Sheet']})**")
+                        
                         c1, c2 = st.columns(2)
                         with c1:
                             st.markdown(f"**Student's Answer**\n<div style='color:#ff4b4b; font-size:1.1rem; font-weight:bold; background-color:#fff5f5; padding:8px; border-radius:5px; border-left:4px solid #ff4b4b;'>{s_ans}</div>", unsafe_allow_html=True)
                         with c2:
                             st.markdown(f"**Suggested Solution**\n<div style='color:#008000; font-size:1.1rem; font-weight:bold; background-color:#f0fff0; padding:8px; border-radius:5px; border-left:4px solid #008000;'>{p_ans}</div>", unsafe_allow_html=True)
-                        
-                        st.markdown(
-                            f"<div style='margin-top:10px; font-style: italic; color: #555;'>"
-                            f"<strong>Analysis:</strong> An incorrect answer was identified. This suggests a potential error in the calculation logic "
-                            f"or a misinterpretation of the task requirements. Please review the instructions for cell {row['Cell']}."
-                            f"</div>", unsafe_allow_html=True
-                        )
-                st.caption("Note: Comparison includes both formulas and final calculated values.")
+                        if is_logic_same:
+                            st.markdown(f"<div style='margin-top:10px; font-style: italic; color: #555;'>Analysis: The formulas are identical, but calculated values differ.</div>", unsafe_allow_html=True)
+
+                        else:
+                            st.markdown(f"<div style='margin-top:10px; font-style: italic; color: #555;'>Analysis: An incorrect answer was identified. Check the logic or cell references.</div>", unsafe_allow_html=True)
+
+            st.caption("Note: Comparison includes both formulas and final calculated values.")
         else:
             st.warning("Please select a student from the Summary Table to generate their feedback report.")
 
