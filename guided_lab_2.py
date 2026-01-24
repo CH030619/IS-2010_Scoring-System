@@ -4,16 +4,17 @@ from openpyxl import load_workbook
 import re
 import io
 
+# --- 0. Access Control ---
 password = st.text_input("Enter Access Code", type="password")
 if password != "TEK2026":
     st.info("Please enter the correct access code.")
     st.stop() 
 
-# 1. Page Setting
+# --- 1. Page Setting ---
 st.set_page_config(page_title="IS 2010 Scoring System", layout="wide")
 st.title("IS 2010 Scoring System")
 
-# Initialize session state to store grading results
+# Initialize session state
 if 'grading_done' not in st.session_state:
     st.session_state['grading_done'] = False
     st.session_state['summary_df'] = None
@@ -38,17 +39,33 @@ with st.expander("IMPORTANT: Professor's Color Guide", expanded=True):
 
 st.divider()
 
-# 2. File uploaders
+# --- 2. File uploaders ---
 col1, col2 = st.columns(2)
 with col1:
     prof_file = st.file_uploader("1. Upload Professor's File", type=['xlsx'], key="prof")
 with col2:
     student_files = st.file_uploader("2. Upload Student's File(s)", type=['xlsx'], accept_multiple_files=True, key="stud")
 
-# 3. Grading Logic & UI Section
+# --- 3. Grading Logic & UI Section ---
 if prof_file and student_files:
     st.subheader("Selection & Execution")
     
+    # [Security] Validation for misplaced files
+    is_valid_upload = True
+    uid_pattern = re.compile(r'[uU]\d{7}')
+
+    # Check if professor's slot contains a student file
+    if uid_pattern.search(prof_file.name):
+        st.error(f"**Upload Error:** The file '{prof_file.name}' in the Professor's slot appears to be a student file. Please check again.")
+        is_valid_upload = False
+        
+    # Check if student slots contain files without a valid UnID
+    invalid_files = [f.name for f in student_files if not uid_pattern.search(f.name)]
+    if invalid_files:
+        st.error(f"**Naming Error:** Files without a valid UnID detected: {', '.join(invalid_files)}")
+        st.info("Student files must include a valid ID (e.g., U1234567) to be processed.")
+        is_valid_upload = False
+
     ui_col1, ui_col2 = st.columns([2, 1])
     with ui_col1:
         selected_name = st.selectbox(
@@ -56,15 +73,19 @@ if prof_file and student_files:
             ["--- Select the color you used in Excel ---"] + list(standard_colors.keys())
         )
     with ui_col2:
-        st.write("") # Spacing
+        st.write("") 
         st.write("")
-        start_button = st.button("Start Grading Process", width='stretch')
+        # Start button is disabled if validation fails
+        start_button = st.button("Start Grading Process", width='stretch', disabled=not is_valid_upload)
+
+    if not is_valid_upload:
+        st.stop()
 
     if selected_name != "--- Select the color you used in Excel ---":
         target_hex_6 = standard_colors[selected_name].lstrip('#').upper()
 
         if start_button:
-            # Process files
+            # Process Professor's File
             p_bytes = prof_file.read()
             wb_p_f = load_workbook(io.BytesIO(p_bytes), data_only=False)
             wb_p_v = load_workbook(io.BytesIO(p_bytes), data_only=True)
@@ -74,7 +95,7 @@ if prof_file and student_files:
             check_map = {}
             total_questions = 0
 
-            # --- Identify Answer Cells ---
+            # Identify Answer Cells
             for sn in wb_p_f.sheetnames:
                 sheet = wb_p_f[sn]
                 cells = []
@@ -93,19 +114,22 @@ if prof_file and student_files:
                 st.error(f"Error: No cells found with color '{selected_name}'.")
                 st.stop()
 
-            # --- Grading Students ---
+            # Grading Students
             progress_bar = st.progress(0)
-            uid_pattern = re.compile(r'[uU]\d{7}')
+            st.warning("**System Note:** Processing valid student files. Any file without a proper UnID has been excluded from this run.")
 
+            # --- Grading Students (Optimized) ---
+            progress_bar = st.progress(0)
+            
+            # Start scoring
             for i, s_file in enumerate(student_files):
                 try:
+                    uid = uid_pattern.search(s_file.name).group().upper()
+                    
                     correct_count = 0
                     s_bytes = s_file.read()
                     wb_s_f = load_workbook(io.BytesIO(s_bytes), data_only=False)
                     wb_s_v = load_workbook(io.BytesIO(s_bytes), data_only=True)
-                    
-                    match = uid_pattern.search(s_file.name)
-                    uid = match.group() if match else s_file.name
 
                     for sn, cells in check_map.items():
                         if sn not in wb_s_v.sheetnames: continue
@@ -116,6 +140,7 @@ if prof_file and student_files:
                             f_p, f_s = str(pf).strip() if pf else "", str(sf).strip() if sf else ""
                             v_p, v_s = str(pv).strip() if pv else "", str(sv).strip() if sv else ""
 
+                            # comparison between equation, values 
                             if f_p.upper() == f_s.upper() and v_p.upper() == v_s.upper():
                                 correct_count += 1
                             else:
@@ -125,28 +150,37 @@ if prof_file and student_files:
                                     "Prof Value": pv, "Student Value": sv
                                 })
                     
-                    summary_data.append({"UnID": uid, "File": s_file.name, "Score": f"{correct_count}/{total_questions}", "Raw_Score": correct_count})
-                    progress_bar.progress((i + 1) / len(student_files))
+                    summary_data.append({
+                        "UnID": uid, 
+                        "File": s_file.name, 
+                        "Score": f"{correct_count}/{total_questions}", 
+                        "Raw_Score": correct_count
+                    })
+
                 except Exception as e:
-                    st.warning(f"Error processing {s_file.name}: {e}")
+                    # Recognize files with errors except file name errors
+                    st.warning(f"System Error with {s_file.name}: {e}")
+
+                finally:
+                    progress_bar.progress((i + 1) / len(student_files))
 
             progress_bar.empty()
 
-            # Store in session state
+            # Save results to session state
             df_res = pd.DataFrame(summary_data).sort_values(by="Raw_Score", ascending=False).drop(columns=["Raw_Score"])
             st.session_state['summary_df'] = df_res
             st.session_state['wrong_df'] = pd.DataFrame(wrong_data)
             st.session_state['total_questions'] = total_questions
             st.session_state['grading_done'] = True
 
-# --- Display Results Section ---
+# --- 4. Display Results Section ---
 if st.session_state['grading_done']:
     st.divider()
-    st.success(f"Grading Complete! Found {st.session_state['total_questions']} answer cells.")
+    st.success(f"Grading Complete! Found {st.session_state['total_questions']} answer cells per file.")
 
-    # 1. Summary Table with Selection
+    # Summary Table
     st.subheader("Grading Summary")
-    st.info("**Instructions:** Click a row in the table below to generate a detailed feedback report for that specific student.")
+    st.info("Click a row in the table below to view the individual narrative feedback report.")
     
     event = st.dataframe(
         st.session_state['summary_df'],
@@ -157,64 +191,52 @@ if st.session_state['grading_done']:
         key="summary_table"
     )
 
-    # 2. Statistics & Visualization
+    # Error Analysis Visualization
     st.divider()
-    st.subheader("Error Analysis")
-    
     df_wrong = st.session_state['wrong_df']
     if not df_wrong.empty:
-        # Chart: Error Frequency per Cell
+        st.subheader("Error Analysis (Frequent Mistakes)")
         error_counts = df_wrong["Cell"].value_counts().reset_index()
         error_counts.columns = ["Cell", "Number of Errors"]
         st.bar_chart(data=error_counts, x="Cell", y="Number of Errors", color="#ff4b4b")
 
-        # Filtering based on table selection
+        # Detailed Individual Feedback
         selected_uid = None
         if event.selection.rows:
             selected_index = event.selection.rows[0]
             selected_uid = st.session_state['summary_df'].iloc[selected_index]["UnID"]
 
-        # --- [NEW] 3. Detailed Feedback Report (Formal Narrative) ---
         if selected_uid:
-            st.markdown(f"### Individual Feedback Report")
-            st.markdown(f"**Target Student ID:** `{selected_uid}`")
-            
+            st.markdown(f"### Individual Feedback Report: `{selected_uid}`")
             display_df = df_wrong[df_wrong["UnID"] == selected_uid]
             
             if display_df.empty:
-                st.success(f"**Final Evaluation:** Student **{selected_uid}** demonstrated a perfect understanding of the tasks. No errors were found in any of the required formulas or values.")
+                st.balloons()
+                st.success(f"Perfect Score! Student **{selected_uid}** correctly completed all tasks.")
             else:
-                st.markdown("---")
-                # Making a short report
-                # --- [REFINED] Individual Feedback Report Design ---
                 for idx, row in display_df.iterrows():
                     p_ans = row['Prof Formula'] if row['Prof Formula'] else row['Prof Value']
                     s_ans = row['Student Formula'] if row['Student Formula'] else row['Student Value']
                     
-                    # Report layout
                     with st.container(border=True):
-                        # Item, cell, rows #
-                        st.markdown(f"Item {idx+1} (Cell {row['Cell']} / {row['Sheet']})")
-                        
+                        st.markdown(f"**Item {idx+1} (Cell {row['Cell']} / Sheet: {row['Sheet']})**")
                         c1, c2 = st.columns(2)
                         with c1:
                             st.markdown(f"**Student's Answer**\n<div style='color:#ff4b4b; font-size:1.1rem; font-weight:bold; background-color:#fff5f5; padding:8px; border-radius:5px; border-left:4px solid #ff4b4b;'>{s_ans}</div>", unsafe_allow_html=True)
                         with c2:
                             st.markdown(f"**Suggested Solution**\n<div style='color:#008000; font-size:1.1rem; font-weight:bold; background-color:#f0fff0; padding:8px; border-radius:5px; border-left:4px solid #008000;'>{p_ans}</div>", unsafe_allow_html=True)
                         
-                        # Specific feedback
                         st.markdown(
-                            f"<div style='margin-top:15px; padding-top:10px; border-top:1px solid #eee;'>"
-                            f"<strong>Analysis:</strong> Incorrect answer was identified in this cell. This suggests a potential error in the calculation logic or a misinterpretation of the task requirements. "
-                            f"Please re-examine the instructions to ensure the formula aligns with the intended output. "
-                            f"</div>", 
-                            unsafe_allow_html=True
+                            f"<div style='margin-top:10px; font-style: italic; color: #555;'>"
+                            f"<strong>Analysis:</strong> An incorrect answer was identified. This suggests a potential error in the calculation logic "
+                            f"or a misinterpretation of the task requirements. Please review the instructions for cell {row['Cell']}."
+                            f"</div>", unsafe_allow_html=True
                         )
-                st.caption("Note: This report is generated based on a comparison between the student's submission and the professor's file.")
+                st.caption("Note: Comparison includes both formulas and final calculated values.")
         else:
-            st.warning("Please select a student from the table above to generate the narrative feedback report.")
+            st.warning("Please select a student from the Summary Table to generate their feedback report.")
 
-        # 4. Download Button
+        # Download Results
         st.divider()
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -230,8 +252,7 @@ if st.session_state['grading_done']:
         )
     else:
         st.balloons()
-        st.success("Perfect! All students scored 100%.")
-
+        st.success("Perfect! All submitted files scored 100%.")
 else:
     if not prof_file or not student_files:
-        st.info("Please upload the Professor's guide and Student's files to initiate the process.")
+        st.info("Ready to grade. Please upload the Professor's and Student's files.")
