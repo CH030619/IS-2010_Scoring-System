@@ -4,7 +4,6 @@ from openpyxl import load_workbook
 import re
 import io
 
-# To secure the code
 password = st.text_input("Enter Access Code", type="password")
 if password != "TEK2026":
     st.info("Please enter the correct access code.")
@@ -147,9 +146,8 @@ if st.session_state['grading_done']:
 
     # 1. Summary Table with Selection
     st.subheader("Grading Summary")
-    st.info("💡 Click a row below to filter incorrect answer details for a specific student.")
+    st.info("**Instructions:** Click a row in the table below to generate a detailed feedback report for that specific student.")
     
-    # Use on_select to catch the row click
     event = st.dataframe(
         st.session_state['summary_df'],
         width='stretch',
@@ -161,7 +159,7 @@ if st.session_state['grading_done']:
 
     # 2. Statistics & Visualization
     st.divider()
-    st.subheader("📊 Error Analysis")
+    st.subheader("Error Analysis")
     
     df_wrong = st.session_state['wrong_df']
     if not df_wrong.empty:
@@ -176,39 +174,64 @@ if st.session_state['grading_done']:
             selected_index = event.selection.rows[0]
             selected_uid = st.session_state['summary_df'].iloc[selected_index]["UnID"]
 
+        # --- [NEW] 3. Detailed Feedback Report (Formal Narrative) ---
         if selected_uid:
-            st.markdown(f"#### Showing Details for Student: `{selected_uid}`")
+            st.markdown(f"### Individual Feedback Report")
+            st.markdown(f"**Target Student ID:** `{selected_uid}`")
+            
             display_df = df_wrong[df_wrong["UnID"] == selected_uid]
+            
+            if display_df.empty:
+                st.success(f"**Final Evaluation:** Student **{selected_uid}** demonstrated a perfect understanding of the tasks. No errors were found in any of the required formulas or values.")
+            else:
+                st.markdown("---")
+                # Making a short report
+                # --- [REFINED] Individual Feedback Report Design ---
+                for idx, row in display_df.iterrows():
+                    p_ans = row['Prof Formula'] if row['Prof Formula'] else row['Prof Value']
+                    s_ans = row['Student Formula'] if row['Student Formula'] else row['Student Value']
+                    
+                    # Report layout
+                    with st.container(border=True):
+                        # Item, cell, rows #
+                        st.markdown(f"Item {idx+1} (Cell {row['Cell']} / {row['Sheet']})")
+                        
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            st.markdown(f"**Student's Answer**\n<div style='color:#ff4b4b; font-size:1.1rem; font-weight:bold; background-color:#fff5f5; padding:8px; border-radius:5px; border-left:4px solid #ff4b4b;'>{s_ans}</div>", unsafe_allow_html=True)
+                        with c2:
+                            st.markdown(f"**Suggested Solution**\n<div style='color:#008000; font-size:1.1rem; font-weight:bold; background-color:#f0fff0; padding:8px; border-radius:5px; border-left:4px solid #008000;'>{p_ans}</div>", unsafe_allow_html=True)
+                        
+                        # Specific feedback
+                        st.markdown(
+                            f"<div style='margin-top:15px; padding-top:10px; border-top:1px solid #eee;'>"
+                            f"<strong>Analysis:</strong> Incorrect answer was identified in this cell. This suggests a potential error in the calculation logic or a misinterpretation of the task requirements. "
+                            f"Please re-examine the instructions to ensure the formula aligns with the intended output. "
+                            f"</div>", 
+                            unsafe_allow_html=True
+                        )
+                st.caption("Note: This report is generated based on a comparison between the student's submission and the professor's file.")
         else:
-            st.markdown("#### Showing Details for `All Students`")
-            display_df = df_wrong
+            st.warning("Please select a student from the table above to generate the narrative feedback report.")
 
-        # 3. Detailed Incorrect Answers Table
-        st.data_editor(
-            display_df,
-            column_config={
-                "UnID": st.column_config.TextColumn("Student ID", width="small"),
-                "Prof Formula": st.column_config.TextColumn("Prof Formula", width="medium"),
-                "Student Formula": st.column_config.TextColumn("Student Formula", width="medium"),
-                "Prof Value": st.column_config.NumberColumn("Prof Value", format="%.4f"),
-            },
-            hide_index=True,
-            width='stretch',
-            disabled=True,
-            key="details_editor"
-        )
-        
         # 4. Download Button
+        st.divider()
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             st.session_state['summary_df'].to_excel(writer, index=False, sheet_name="Summary")
             df_wrong.to_excel(writer, index=False, sheet_name="All_Errors")
-        st.download_button("Download Full Report (.xlsx)", output.getvalue(), "IS 2010 Grading Result.xlsx", width='stretch')
+        
+        st.download_button(
+            label="Download Full Grading Report (.xlsx)",
+            data=output.getvalue(),
+            file_name=f"Grading_Result_{selected_name}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            width='stretch'
+        )
     else:
         st.balloons()
-        st.success("Perfect! No errors found.")
+        st.success("Perfect! All students scored 100%.")
 
 else:
     if not prof_file or not student_files:
-
-        st.info("Please upload the Professor's file and Student's files to start.")
+        st.info("Please upload the Professor's guide and Student's files to initiate the process.")
