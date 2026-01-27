@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from openpyxl import load_workbook
+import math
 import re
 import io
 
@@ -14,6 +15,30 @@ if password != "TEK2026":
 st.set_page_config(page_title="IS 2010 Scoring System", layout="wide")
 st.title("IS 2010 Scoring System")
 
+def check_logic_equivalence(prof_f, stud_f, prof_v, stud_v):
+    # 1. round off error (1.999... vs 2.0)
+    # 2. formula error solved (A1*2 vs 2*A1)
+    try:
+        v_p_float = float(prof_v) if prof_v is not None else 0.0
+        v_s_float = float(stud_v) if stud_v is not None else 0.0
+        values_match = math.isclose(v_p_float, v_s_float, rel_tol=1e-9, abs_tol=1e-9)
+    except (ValueError, TypeError):
+        # if not real numbers, compare
+        values_match = str(prof_v).strip().upper() == str(stud_v).strip().upper()
+
+    if values_match:
+        # if values match, compare the formulas
+        p_norm = str(prof_f).replace(" ", "").upper() if prof_f else ""
+        s_norm = str(stud_f).replace(" ", "").upper() if stud_f else ""
+        
+        if p_norm == s_norm:
+            return True
+        
+        if sorted(list(p_norm)) == sorted(list(s_norm)):
+            return True
+            
+    return False
+
 def reset_grading():
     st.session_state['grading_done'] = False
     st.session_state['summary_df'] = None
@@ -21,6 +46,7 @@ def reset_grading():
     st.session_state['total_questions'] = 0
 if 'grading_done' not in st.session_state:
     reset_grading()
+
 
 
 # --- Step 1: Professor's Color Guide ---
@@ -139,11 +165,8 @@ if prof_file and student_files:
                             pf, sf = wb_p_f[sn][c].value, wb_s_f[sn][c].value
                             pv, sv = wb_p_v[sn][c].value, wb_s_v[sn][c].value
                             
-                            f_p, f_s = str(pf).strip() if pf else "", str(sf).strip() if sf else ""
-                            v_p, v_s = str(pv).strip() if pv else "", str(sv).strip() if sv else ""
-
                             # comparison between equation, values 
-                            if f_p.upper() == f_s.upper() and v_p.upper() == v_s.upper():
+                            if check_logic_equivalence(pf, sf, pv, sv):
                                 correct_count += 1
                             else:
                                 wrong_data.append({
@@ -151,7 +174,7 @@ if prof_file and student_files:
                                     "Prof Formula": pf, "Student Formula": sf,
                                     "Prof Value": pv, "Student Value": sv
                                 })
-                    
+                                                        
                     summary_data.append({
                         "UnID": uid, 
                         "File": s_file.name, 
