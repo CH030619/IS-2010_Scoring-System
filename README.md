@@ -67,11 +67,3 @@ To ensure accuracy, students must strictly follow these rules:
 
 * Parsing: Lxml (XML structures)
 
-```
-## 📸 Screenshots
-<p align="center">
-  <img width="400" src="https://github.com/user-attachments/assets/49c4f17e-ee4a-4ff1-813a-f7951f8490a4" />
-  
-  <img width="400" src="https://github.com/user-attachments/assets/1ec76e87-cb3-4312-8d18-7c538ee65f4c" />
-</p>
-
