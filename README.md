@@ -36,8 +36,6 @@ pip install streamlit pandas openpyxl openai fpdf lxml
 ```bash
 * **Create a .streamlit/secrets.toml file in the root directory:
 OPENAI_API_KEY = "your_openai_api_key_here"
-<img width="238" height="229" alt="image" src="https://github.com/user-attachments/assets/49c4f17e-ee4a-4ff1-813a-f7951f8490a4" />
-<img width="448" height="299" alt="image" src="https://github.com/user-attachments/assets/1ec76e87-cb3c-4312-8d18-7c538ee65f4c" />
 ```
 ### 3. Run the Application
 ```bash
@@ -68,4 +66,12 @@ To ensure accuracy, students must strictly follow these rules:
 * PDF Engine: FPDF
 
 * Parsing: Lxml (XML structures)
+
+```
+## 📸 Screenshots
+<p align="center">
+  <img width="400" src="https://github.com/user-attachments/assets/49c4f17e-ee4a-4ff1-813a-f7951f8490a4" />
+  
+  <img width="400" src="https://github.com/user-attachments/assets/1ec76e87-cb3-4312-8d18-7c538ee65f4c" />
+</p>
 
