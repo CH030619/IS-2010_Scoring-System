@@ -66,4 +66,11 @@ To ensure accuracy, students must strictly follow these rules:
 * PDF Engine: FPDF
 
 * Parsing: Lxml (XML structures)
+```
+
+### Test Data
+```bash
+* Try to upload prof_lab_2 in professor's file, and u1234567(CH)_lab_2 in student's file
+* Try to select a color you want to score and generate the system
+
 
