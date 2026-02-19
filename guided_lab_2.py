@@ -145,6 +145,7 @@ if 'grading_done' not in st.session_state:
 with st.expander("Professor's Color Guide", expanded=False):
     standard_colors = {"Dark Red": "#C00000", "Red": "#FF0000", "Orange": "#FFC000", "Yellow": "#FFFF00", "Light Green": "#92D050", "Green": "#00B050", "Light Blue": "#00B0F0", "Blue": "#0070C0", "Dark Blue": "#002060", "Purple": "#7030A0"}
     cols = st.columns(10)
+    st.caption("※ Only standard colors are supported for valid score calculations.")
     for idx, (name, hex_val) in enumerate(standard_colors.items()):
         cols[idx].markdown(f"<div style='background-color:{hex_val}; height:20px; border-radius:3px;'></div>", unsafe_allow_html=True)
         cols[idx].caption(name)
@@ -272,3 +273,4 @@ if st.session_state['grading_done']:
                 )
 else:
     st.info("Upload files to start.")
+
