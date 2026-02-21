@@ -34,19 +34,27 @@ def format_ans(f, v):
 # --- Core Grading Logic ---
 def check_logic_equivalence(prof_f, stud_f, prof_v, stud_v):
     try:
+        if prof_v is None and stud_v is None:
+            return False
+        
         v_p_float = float(prof_v) if prof_v is not None else 0.0
         v_s_float = float(stud_v) if stud_v is not None else 0.0
         values_match = math.isclose(v_p_float, v_s_float, rel_tol=1e-9, abs_tol=1e-9)
 
+        
     except (ValueError, TypeError):
         values_match = str(prof_v).strip().upper() == str(stud_v).strip().upper()
 
     if values_match:
-        p_norm = str(prof_f).replace(" ", "").upper() if prof_f else ""
-        s_norm = str(stud_f).replace(" ", "").upper() if stud_f else ""
-
-        if p_norm == s_norm or sorted(list(p_norm)) == sorted(list(s_norm)):
-            return True
+        p_is_formula = str(prof_f).startswith('=') if prof_f else False
+        s_is_formula = str(stud_f).startswith('=') if stud_f else False
+        
+        if p_is_formula and s_is_formula:
+            p_norm = str(prof_f).replace(" ", "").upper()
+            s_norm = str(stud_f).replace(" ", "").upper()
+            return p_norm == s_norm
+        
+        return True  # Pass if values match
         
     return False
 
@@ -55,21 +63,60 @@ def check_sparkline_advanced(p_cache, s_cache, cell_coord):
     def extract_xml_info(xml_cache, target_cell):
         try:
             clean_cell = target_cell.replace('$', '').upper()
+            st.write(f"🔍 Finding {clean_cell}'s sparkline...")
+
             for xml_path, xml_content in xml_cache.items():
-                all_sqrefs = re.findall(r'sqref="(.*?)"', xml_content)
-                for sq in all_sqrefs:
-                    norm_sq = sq.replace('$', '').upper()
-                    if clean_cell == norm_sq or clean_cell in norm_sq.split(':'):
-                        pattern = rf'<x14:sparklineGroup[^>]*sqref="{re.escape(sq)}".*?</x14:sparklineGroup>'
-                        group_match = re.search(pattern, xml_content, re.DOTALL)
-                        if group_match:
-                            g_text = group_match.group(0)
-                            f_match = re.search(r'<(?:xm:)?f[^>]*>(.*?)</(?:xm:)?f>', g_text)
-                            if not f_match: f_match = re.search(r' f="(.*?)"', g_text)
-                            if f_match: return {"range": f_match.group(1)}                       
+                st.write(f"Analyzing the file: {xml_path}")
+
+                # Parse sparkline blocks using lxml instead of regex
+                tree = etree.fromstring(xml_content.encode())
+                NS = {
+                    "x14": "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main",
+                    "xm":  "http://schemas.microsoft.com/office/excel/2006/main",
+                }
+
+                for sp in tree.findall('.//x14:sparkline', NS):
+                    sq_elem = sp.find('xm:sqref', NS)
+                    f_elem  = sp.find('xm:f',     NS)
+                    if sq_elem is None or f_elem is None:
+                        continue
+
+                    norm_sq = sq_elem.text.replace('$', '').upper()
+
+                    # Debug log
+                    if clean_cell in norm_sq.split(' '):
+                        st.write(f" [log] {clean_cell} cell found!")
+
+                    if norm_sq == clean_cell:
+                        # Traverse parent tags to read sparklineGroup attributes
+                        grp = sp.getparent().getparent()  # sparkline → sparklines → sparklineGroup
+
+                        found_range = f_elem.text.strip()
+                        sp_type     = grp.get("type", "line")
+                        markers     = grp.get("markers", "0") == "1"
+                        high_point  = grp.get("highPoint", "0") == "1"
+                        low_point   = grp.get("lowPoint", "0") == "1"
+                        first_point = grp.get("firstPoint", "0") == "1"
+                        last_point  = grp.get("lastPoint", "0") == "1"
+                        negative    = grp.get("negative", "0") == "1"
+
+                        st.write(f"🔎 [Sparkline Found] Cell: {clean_cell} -> Range: {found_range}")
+                        return {
+                            "range":       found_range,
+                            "type":        sp_type,
+                            "markers":     markers,
+                            "high_point":  high_point,
+                            "low_point":   low_point,
+                            "first_point": first_point,
+                            "last_point":  last_point,
+                            "negative":    negative,
+                        }
+
             return None
-        
-        except Exception: return None
+
+        except Exception as e:
+            st.warning(f"[Error] {e}")
+            return None
 
     p_info = extract_xml_info(p_cache, cell_coord)
     s_info = extract_xml_info(s_cache, cell_coord)
@@ -82,11 +129,18 @@ def check_sparkline_advanced(p_cache, s_cache, cell_coord):
     s_src = s_info['range'].replace("$", "").replace(" ", "").upper()
 
     if p_src != s_src:
-        return False, f"Range: {s_info['range']}", f"Range: {p_info['range']}", f"Data range error"
-    
+        return False, f"Range: {s_info['range']}", f"Range: {p_info['range']}", "Data range error"
+
+    if p_info['type'] != s_info['type']:
+        return False, f"Type: {s_info['type']}", f"Type: {p_info['type']}", "Sparkline type error"
+
+    marker_keys = ['markers', 'high_point', 'low_point', 'first_point', 'last_point', 'negative']
+    if any(p_info[k] != s_info[k] for k in marker_keys):
+        return False, "Marker settings differ", "See professor's file", "Marker configuration error"
+
     return True, None, None, None
 
-# --- AI Feedback Function (Triggered only during report generation) ---
+# --- AI Feedback Function (called only when generating reports) ---
 def get_ai_feedback(prof_ans_str, stud_ans_str, custom_msg=None):
     if not client: return "AI feedback disabled."
     if custom_msg: return custom_msg
@@ -125,7 +179,7 @@ def create_pdf_report(uid, score, errors):
             pdf.set_text_color(0, 100, 0)
             pdf.multi_cell(0, 7, txt=f"Professor's Answer: {err['Prof_Ans']}")
             
-            # 🔥 AI feedback generated here (on-demand)
+            # Generate AI feedback only when needed
             feedback = get_ai_feedback(err['Prof_Ans'], err['Stud_Ans'], custom_msg=err.get('Custom_Msg'))
             
             pdf.set_fill_color(245, 245, 245)
@@ -163,7 +217,7 @@ if prof_file and student_files:
         p_bytes = prof_file.read()
         
         with zipfile.ZipFile(io.BytesIO(p_bytes)) as z:
-            p_cache = {f: z.read(f).decode('utf-8') for f in z.namelist() if 'xl/worksheets/sheet' in f}
+            p_cache = {f: z.read(f).decode('utf-8', errors='replace') for f in z.namelist() if 'xl/worksheets/sheet' in f}
             
         p_wb_f = load_workbook(io.BytesIO(p_bytes), data_only=False, read_only=True)
         p_wb_v = load_workbook(io.BytesIO(p_bytes), data_only=True, read_only=True)
@@ -183,7 +237,7 @@ if prof_file and student_files:
             with st.status(f"Grading {s_file.name}...", expanded=True) as status:
                 s_bytes = s_file.read()
                 with zipfile.ZipFile(io.BytesIO(s_bytes)) as z:
-                    s_cache = {f: z.read(f).decode('utf-8') for f in z.namelist() if 'xl/worksheets/sheet' in f}
+                    s_cache = {f: z.read(f).decode('utf-8', errors='replace') for f in z.namelist() if 'xl/worksheets/sheet' in f}
                 
                 s_wb_f = load_workbook(io.BytesIO(s_bytes), data_only=False, read_only=True)
                 s_wb_v = load_workbook(io.BytesIO(s_bytes), data_only=True, read_only=True)
@@ -200,13 +254,13 @@ if prof_file and student_files:
                             if check_logic_equivalence(pf, sf, pv, sv):
                                 correct += 1
                             else:
-                                # Save error data without calling AI
+                                # Store info without AI call
                                 all_wrongs.append({"UnID": uid, "Sheet": sn, "Cell": c, "Stud_Ans": format_ans(sf, sv), "Prof_Ans": format_ans(pf, pv)})
                         else: 
                             if is_sl:
                                 correct += 1
                             else:
-                                all_wrongs.append({"UnID": uid, "Sheet": sn, "Cell": c, "Stud_Ans": s_ans, "Prof_Ans": p_ans, "Custom_Msg": msg})
+                                all_wrongs.append({"UnID": uid, "Sheet": sn, "Cell": c, "Stud_Ans": f"[Sparkline] {s_ans}", "Prof_Ans": f"[Sparkline] {p_ans}"})
                 status.update(label=f" {uid} Done!", state="complete", expanded=False)
             summary_results.append({"UnID": uid, "Score": f"{correct}/{total_qs}", "Raw": correct})
             progress_bar.progress((i + 1) / len(student_files))
@@ -215,11 +269,12 @@ if prof_file and student_files:
         st.rerun()
 
 if st.session_state['grading_done']:
+    df_all_errors = pd.DataFrame(st.session_state['all_wrongs_list'])
+
     st.divider()
     col_chart, col_table = st.columns([1, 1])
     with col_chart:
         st.subheader("📊 Class Error Analysis")
-        df_all_errors = pd.DataFrame(st.session_state['all_wrongs_list'])
         if not df_all_errors.empty:
             st.bar_chart(df_all_errors['Cell'].value_counts())
         else:
@@ -230,25 +285,23 @@ if st.session_state['grading_done']:
 
     st.divider()
     st.subheader("📥 Download Final Reports")
-    
-    # Separate columns for Excel and PDF sections
+    # Split into two columns for Excel and PDF sections
     col_dl1, col_dl2 = st.columns(2)
     
     with col_dl1:
         xlsx_report = io.BytesIO()
         with pd.ExcelWriter(xlsx_report, engine='openpyxl') as writer:
             st.session_state['summary_df'].drop(columns=['Raw']).to_excel(writer, index=False, sheet_name="Summary")
-            if not df_all_errors.empty: 
+            if not df_all_errors.empty:
                 df_all_errors.to_excel(writer, index=False, sheet_name="All_Errors")
         st.download_button("📊 Download Excel Summary", xlsx_report.getvalue(), "IS 2010 Results.xlsx", width='stretch')
 
     with col_dl2:
-        # 1. Action button to generate AI reports
+        # Step 1: Button to generate AI reports
         if st.button("📄 Step 1: Generate AI Reports", width='stretch'):
             zip_buffer = io.BytesIO()
             with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zf:
                 for uid in st.session_state['summary_df']['UnID'].tolist():
-                    # Display spinner with Student ID only
                     with st.spinner(f"Generating AI Feedback for {uid}..."):
                         s_errs = [e for e in st.session_state['all_wrongs_list'] if e['UnID'] == uid]
                         s_score = st.session_state['summary_df'][st.session_state['summary_df']['UnID'] == uid]['Score'].values[0]
@@ -258,10 +311,10 @@ if st.session_state['grading_done']:
             st.session_state['zip_data'] = zip_buffer.getvalue()
             st.success("✅ All reports generated!")
 
-        # 2. Centered save button appearing when file is ready
+        # Step 2: Download button appears once ZIP is ready
         if 'zip_data' in st.session_state:
-            st.write("") # Spacer
-            # Layout split 1:2:1 to center the button in the middle column
+            st.write("")
+            # Center the button using 1:2:1 column ratio
             _, center_col, _ = st.columns([1, 2, 1])
             with center_col:
                 st.download_button(
@@ -269,8 +322,7 @@ if st.session_state['grading_done']:
                     data=st.session_state['zip_data'],
                     file_name="Student_Reports.zip",
                     mime="application/zip",
-                    width='stretch' 
+                    width='stretch'
                 )
 else:
     st.info("Upload files to start.")
-
