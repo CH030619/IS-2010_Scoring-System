@@ -1,74 +1,68 @@
-# IS 2010 Automated Scoring System with AI Feedback
+## 📊 IS 2010 Automated Scoring System [AI-Powered Precision Grading for Guided/Homework Lab]
+* This system is a specialized grading engine developed for the IS 2010 course at the University of Utah.
+* It ensures academic integrity and provides pedagogical value by analyzing formulas, values, and hidden XML structures (Sparklines) with high-speed automation.
 
-> **Smart, Scalable, and Precise Grading Engine for Microsoft Excel Assignments.**
+### ✨ Why This System?
+* Formula-Level Analysis: Beyond simple values, it verifies the logic behind the numbers (1:1 string comparison).
 
----
+* AI-Driven Pedagogy: Uses OpenAI GPT-4o-mini to explain why a student was wrong, acting as a 24/7 TA.
 
-This project is an automated grading solution designed for the IS 2010 course at the University of Utah. 
-It goes beyond simple value matching by analyzing Excel formulas, cell properties, and hidden XML structures (for Sparklines), providing students with personalized, AI-generated feedback through OpenAI's GPT-4o-mini.
+* Dynamic Sparkline Support: Deep-parses XML structures to grade visual data trends that standard libraries often miss.
 
----
-
-## Core Objectives
-* **Automated Precision**: Compare student submissions against a master key with 1:1 formula and value matching.
-* **Intelligent Feedback**: Leverage OpenAI API to analyze errors and provide pedagogical guidance.
-* **Professional Reporting**: Generate comprehensive PDF diagnostic reports for each student.
-
----
-
-## Key Technical Features
-
-### Performance Optimization (Read-only & Caching)
-* **Read-only Mode**: Utilizes `openpyxl`'s `read_only=True` to minimize memory footprint and maximize loading speed for large batches.
+* One-Click Reporting: Automatically generates professional PDF diagnostic reports for the entire class.
 
 
-### Decoupled AI Pipeline
-The AI feedback generation is decoupled from the main grading loop. This "Generate on Demand" architecture ensures system stability and optimizes API token costs by only processing errors during report generation.
-
----
-
-## Getting Started
-### 1. Installation
+### 🛠 Tech Stack & Architecture
 ```bash
-pip install streamlit pandas openpyxl openai fpdf lxml
-```
-### 2. Configuration (API Credentials)
-```bash
-* **Create a .streamlit/secrets.toml file in the root directory:
-OPENAI_API_KEY = "your_openai_api_key_here"
-```
-### 3. Run the Application
-```bash
-streamlit run guided_lab_2.py
-```
-### Guided Lab Guidelines & Cautions
-```bash
-To ensure accuracy, students must strictly follow these rules:
-
-* File Naming: Filenames must include a valid UNID (e.g., u1234567).
-
-* Sheet Integrity: Do not rename sheets or insert/delete rows/columns. The system relies on fixed cell coordinates.
-
-* Formula vs. Value: Manual inputs (typing values) where a formula is required will be marked as Incorrect.
-
-* Formatting: Only .xlsx files are supported. No macros (.xlsm) or password protection allowed.
-```
-### 🛠 Tech Stack
-```bash
-* Engine: Python 3.x
-
 * Framework: Streamlit
 
-* Excel Processing: Openpyxl, Pandas
+* Data Engines: Openpyxl, Pandas, Lxml
 
 * AI Logic: OpenAI GPT-4o-mini
 
 * PDF Engine: FPDF
-
-* Parsing: Lxml (XML structures)
 ```
 
-### Test Data
+### 📋 Professor's Quick Start Guide
 ```bash
-* Try to upload prof_lab_2 in professor's file, and u1234567(CH)_lab_2 in student's file
-* Try to select a color you want to score and generate the system
+1. Environment Setup
+Ensure you have set your environment
+
+2. Install required libraries:
+pip install streamlit openpyxl pandas openai fpdf lxml zipfile math
+
+3. API Configuration
+Create a .streamlit/secrets.toml file in your root directory:
+Add your API key as follows:
+OPENAI_API_KEY = "your api key here"
+
+4. Launching the App
+```
+
+### ⚠️ Essential Guidelines for Success
+To maintain 100% grading accuracy, please ensure students are briefed on these rules:
+
+### 🎨 The "10 Standard Colors" Rule
+* The engine utilizes openpyxl to detect answer keys via Cell Shading.
+
+* Requirement: Instructors must use one of the 10 Standard Colors (Standard Palette) for answer keys.
+
+* Note: Custom RGB/Theme colors or font-only changes will not be recognized by the engine.
+
+### 📝 Student Submission Rules
+* File Naming: Must include a valid UNID (e.g., u1234567_Lab2.xlsx).
+
+* Structure: Students must not rename sheets or shift cell coordinates.
+
+* Logic: Manual inputs (typing 0.33) will be marked incorrect if the key requires a formula (=1/3).
+
+* Format: Only .xlsx is supported (No Macros/Password protection).
+
+### 🧪 Quick Test (Demo)
+1) Upload prof_lab_2.xlsx in the Professor's File slot.
+
+2) Upload u1234567(CH)_lab_2.xlsx in the Student's File slot.
+
+3) Select the Fill Color you used for the answer key.
+
+4) Click Start Grading and review the AI-generated PDF reports.
