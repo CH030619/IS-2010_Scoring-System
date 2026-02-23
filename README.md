@@ -1,6 +1,9 @@
 ## 📊 IS 2010 Automated Scoring System [AI-Powered Precision Grading for Guided/Homework Lab]
 * This system is a specialized grading engine developed for the IS 2010 course at the University of Utah.
+
 * It ensures academic integrity and provides pedagogical value by analyzing formulas, values, and hidden XML structures (Sparklines) with high-speed automation.
+  
+* This project was developed through a collaborative effort between the Excel Lab members of the TEK Club and Large Language Models, including Google Gemini and Anthropic Claude.
 
 ### ✨ Why This System?
 * Formula-Level Analysis: Beyond simple values, it verifies the logic behind the numbers (1:1 string comparison).
