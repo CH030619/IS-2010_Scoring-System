@@ -37,6 +37,8 @@ Add your API key as follows:
 OPENAI_API_KEY = "your api key here"
 
 4. Launching the App
+Enter the following in your terminal:
+streamlit run "Scoring_System"
 ```
 
 ### ⚠️ Essential Guidelines for Success
