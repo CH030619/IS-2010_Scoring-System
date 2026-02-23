@@ -61,10 +61,12 @@ To maintain 100% grading accuracy, please ensure students are briefed on these r
 * Format: Only .xlsx is supported (No Macros/Password protection).
 
 ### 🧪 Quick Test (Demo)
-1) Upload prof_lab_2.xlsx in the Professor's File slot.
+1) Download the testing folders (Guided_Lab_2 & Guided_Lab_3)
 
-2) Upload u1234567(CH)_lab_2.xlsx in the Student's File slot.
+2) Upload professor's file (xlsx) in the Professor's File slot.
 
-3) Select the Fill Color you used for the answer key.
+3) Upload student's file (u0000000_lab_x).xlsx in the Student's File slot.
 
-4) Click Start Grading and review the AI-generated PDF reports.
+4) Select the Fill Color you used for the answer key.
+
+5) Click Start Grading and review the AI-generated PDF reports.
