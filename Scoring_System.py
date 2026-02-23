@@ -11,7 +11,7 @@ from fpdf import FPDF
 
 # 1. Page Setting
 st.set_page_config(page_title="IS 2010 Scoring System", layout="wide")
-st.title("IS 2010 Scoring System")
+st.title("IS 2010 Excel Guided Lab Scoring System")
 
 # --- Initialize OpenAI Client ---
 try:
@@ -196,13 +196,42 @@ def create_pdf_report(uid, score, errors):
 if 'grading_done' not in st.session_state:
     st.session_state.update({'grading_done': False, 'summary_df': pd.DataFrame(), 'all_wrongs_list': [], 'total_questions': 0})
 
-with st.expander("Professor's Color Guide", expanded=False):
+with st.expander("Professor's Color Guide", expanded=True):
     standard_colors = {"Dark Red": "#C00000", "Red": "#FF0000", "Orange": "#FFC000", "Yellow": "#FFFF00", "Light Green": "#92D050", "Green": "#00B050", "Light Blue": "#00B0F0", "Blue": "#0070C0", "Dark Blue": "#002060", "Purple": "#7030A0"}
     cols = st.columns(10)
-    st.caption("※ Only standard colors are supported for valid score calculations.")
+    st.warning("※ **Crucial:** To ensure 100% accurate data recognition by the **openpyxl engine**, please use these 10 standard colors as **CELL SHADING (Fill Color)** to indicate the correct answers."
+               "Custom colors or font-only changes will cause calculation errors.")
+
     for idx, (name, hex_val) in enumerate(standard_colors.items()):
         cols[idx].markdown(f"<div style='background-color:{hex_val}; height:20px; border-radius:3px;'></div>", unsafe_allow_html=True)
         cols[idx].caption(name)
+with st.expander("📘 Guided Lab Guidelines & Cautions", expanded=True):
+    st.markdown("""
+    To ensure the automated scoring system processes your work accurately, please **strictly adhere** to the following rules:
+
+    #### 1. File Naming Convention (UNID Required)
+    * **Professor's File:** No naming restrictions.
+    * **Student Files:** Your filename must include your unique UID (e.g., **U1234567**). 
+    * It's fine to include your name as long as the file starts with your UNID (e.g., `u1234567(Wooje)_Lab_2.xlsx`).
+    * *Files without a valid UID pattern will be automatically excluded from the grading process.*
+
+    #### 2. Maintain Sheet Structure
+    * **Do Not Rename Sheets:** Keep the original sheet names as provided by the instructor.
+    * **Do Not Insert/Delete Cells:** Do not add or remove rows/columns. The system grades based on specific cell coordinates (e.g., B5). Moving content to C6 will result in an "Incorrect" mark.
+
+    #### 3. Precision in Formulas and Values
+    * The system performs a **1:1 string comparison** for both the formula and the final value.
+    * Avoid unnecessary spaces, periods (.), or quotation marks unless they are part of the required answer. **A single extra space can result in a deduction.**
+
+    #### 4. Decimal Precision & Rounding Rules
+    * **The Instructor's Entry is the Standard:** Both must use the same rounding method (e.g., `=ROUND(calculation, 2)`).
+    * **Formula vs. Value:** Even if the final value appears identical (e.g., 0.33), typing "0.33" manually will be marked **Incorrect** if the instructor used a formula like `=1/3`.
+
+    #### 5. File Integrity
+    * **Format:** Only **.xlsx** files are supported.
+    * **No Protection:** Do not password-protect files or specific sheets.
+    * **No Macros:** Ensure your file is saved as a standard workbook without macros.
+    """)
 
 st.divider()
 
