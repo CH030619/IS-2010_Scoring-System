@@ -58,9 +58,14 @@ def format_ans(f, v):
 # 5. Core Grading: Value Comparison
 # ──────────────────────────────────────────────
 def check_value_equivalence(prof_f, stud_f, prof_v, stud_v):
+    # 값이 둘 다 None이면 (수식만 있고 값이 캐싱 안 된 경우)
+    # 수식 문자열만 비교
+    if prof_v is None and stud_v is None:
+        pf_str = str(prof_f).replace(" ", "").upper() if prof_f else ""
+        sf_str = str(stud_f).replace(" ", "").upper() if stud_f else ""
+        return bool(pf_str) and pf_str == sf_str
+
     try:
-        if prof_v is None and stud_v is None:
-            return False
         v_p = float(prof_v) if prof_v is not None else 0.0
         v_s = float(stud_v) if stud_v is not None else 0.0
         values_match = math.isclose(v_p, v_s, rel_tol=1e-9, abs_tol=1e-9)
@@ -78,65 +83,202 @@ def check_value_equivalence(prof_f, stud_f, prof_v, stud_v):
 # ──────────────────────────────────────────────
 # 6. Core Grading: Format Comparison
 # ──────────────────────────────────────────────
-def check_format_equivalence(prof_cell, stud_cell):
+def check_format_equivalence(prof_cell, stud_cell, fmt_options=None, p_wb=None, s_wb=None):
     """
-    Compares cell formatting: number format, font (bold/color/size), border, fill color.
+    Compares cell formatting based on enabled options.
+    fmt_options: dict of {option_key: bool}
     Returns (is_match: bool, issues: list[str])
     """
+    if fmt_options is None:
+        fmt_options = {k: True for k in [
+            "number_format", "font_name", "font_bold", "font_color", "font_size",
+            "border", "alignment", "wrap_text", "cell_size", "merge"
+        ]}
+
     issues = []
 
     # --- Number Format ---
-    p_nf = prof_cell.number_format or "General"
-    s_nf = stud_cell.number_format or "General"
-    if p_nf.strip() != s_nf.strip():
-        issues.append(f"Number format mismatch: yours='{s_nf}' expected='{p_nf}'")
+    if fmt_options.get("number_format"):
+        p_nf = prof_cell.number_format or "General"
+        s_nf = stud_cell.number_format or "General"
+        if p_nf.strip() != s_nf.strip():
+            issues.append(f"Number format mismatch: yours='{s_nf}' expected='{p_nf}'")
 
     # --- Font ---
     p_font = prof_cell.font
     s_font = stud_cell.font
     if p_font and s_font:
-        if bool(p_font.bold) != bool(s_font.bold):
-            issues.append(f"Bold mismatch: yours={'Bold' if s_font.bold else 'Normal'} expected={'Bold' if p_font.bold else 'Normal'}")
-        p_fcolor = str(p_font.color.rgb) if p_font.color and p_font.color.type == 'rgb' else "000000"
-        s_fcolor = str(s_font.color.rgb) if s_font.color and s_font.color.type == 'rgb' else "000000"
-        if p_fcolor[-6:] != s_fcolor[-6:]:
-            issues.append(f"Font color mismatch: yours=#{s_fcolor[-6:]} expected=#{p_fcolor[-6:]}")
-        p_fsize = p_font.size or 11
-        s_fsize = s_font.size or 11
-        if abs(float(p_fsize) - float(s_fsize)) > 0.5:
-            issues.append(f"Font size mismatch: yours={s_fsize} expected={p_fsize}")
+        if fmt_options.get("font_name"):
+            p_fn = p_font.name or "Calibri"
+            s_fn = s_font.name or "Calibri"
+            if p_fn != s_fn:
+                issues.append(f"Font name mismatch: yours='{s_fn}' expected='{p_fn}'")
 
-    # --- Border (checks all four sides) ---
-    p_border = prof_cell.border
-    s_border = stud_cell.border
-    if p_border and s_border:
-        for side in ['left', 'right', 'top', 'bottom']:
-            p_bs = getattr(p_border, side)
-            s_bs = getattr(s_border, side)
-            p_style = p_bs.border_style if p_bs else None
-            s_style = s_bs.border_style if s_bs else None
-            if p_style != s_style:
-                issues.append(f"Border {side} mismatch: yours='{s_style}' expected='{p_style}'")
+        if fmt_options.get("font_bold"):
+            if bool(p_font.bold) != bool(s_font.bold):
+                issues.append(f"Bold mismatch: yours={'Bold' if s_font.bold else 'Normal'} expected={'Bold' if p_font.bold else 'Normal'}")
 
-    # Fill Color is intentionally excluded —
-    # cell background color is used by the professor to mark graded cells,
-    # not as a formatting requirement for students.
+        if fmt_options.get("font_color"):
+            p_fc = str(p_font.color.rgb) if p_font.color and p_font.color.type == 'rgb' else "000000"
+            s_fc = str(s_font.color.rgb) if s_font.color and s_font.color.type == 'rgb' else "000000"
+            if p_fc[-6:] != s_fc[-6:]:
+                issues.append(f"Font color mismatch: yours=#{s_fc[-6:]} expected=#{p_fc[-6:]}")
 
+        if fmt_options.get("font_size"):
+            p_fs = p_font.size or 11
+            s_fs = s_font.size or 11
+            if abs(float(p_fs) - float(s_fs)) > 0.5:
+                issues.append(f"Font size mismatch: yours={s_fs} expected={p_fs}")
+
+    # --- Border ---
+    if fmt_options.get("border"):
+        p_border = prof_cell.border
+        s_border = stud_cell.border
+        if p_border and s_border:
+            for side in ['left', 'right', 'top', 'bottom']:
+                p_style = getattr(p_border, side).border_style if getattr(p_border, side) else None
+                s_style = getattr(s_border, side).border_style if getattr(s_border, side) else None
+                if p_style != s_style:
+                    issues.append(f"Border {side} mismatch: yours='{s_style}' expected='{p_style}'")
+
+    # --- Alignment ---
+    if fmt_options.get("alignment"):
+        p_al = prof_cell.alignment
+        s_al = stud_cell.alignment
+        if p_al and s_al:
+            p_h = p_al.horizontal or "general"
+            s_h = s_al.horizontal or "general"
+            p_v = p_al.vertical or "bottom"
+            s_v = s_al.vertical or "bottom"
+            if p_h != s_h:
+                issues.append(f"Horizontal alignment mismatch: yours='{s_h}' expected='{p_h}'")
+            if p_v != s_v:
+                issues.append(f"Vertical alignment mismatch: yours='{s_v}' expected='{p_v}'")
+
+    # --- Wrap Text ---
+    if fmt_options.get("wrap_text"):
+        p_al = prof_cell.alignment
+        s_al = stud_cell.alignment
+        p_wrap = bool(p_al.wrap_text) if p_al else False
+        s_wrap = bool(s_al.wrap_text) if s_al else False
+        if p_wrap != s_wrap:
+            issues.append(f"Wrap text mismatch: yours={'On' if s_wrap else 'Off'} expected={'On' if p_wrap else 'Off'}")
+
+    # --- Cell Size (row height / column width) ---
+    if fmt_options.get("cell_size") and p_wb and s_wb:
+        try:
+            p_ws = p_wb[prof_cell.parent.title]
+            s_ws = s_wb[stud_cell.parent.title]
+            row_idx    = prof_cell.row
+            col_letter = prof_cell.column_letter
+
+            # 5번 fix: None이면 Excel 기본값으로 처리 (행 높이 15, 열 너비 8.43)
+            p_rh = p_ws.row_dimensions[row_idx].height or 15.0
+            s_rh = s_ws.row_dimensions[row_idx].height or 15.0
+            if abs(float(p_rh) - float(s_rh)) > 1.0:
+                issues.append(f"Row height mismatch: yours={s_rh:.1f} expected={p_rh:.1f}")
+
+            p_cw = p_ws.column_dimensions[col_letter].width or 8.43
+            s_cw = s_ws.column_dimensions[col_letter].width or 8.43
+            if abs(float(p_cw) - float(s_cw)) > 1.0:
+                issues.append(f"Column width mismatch: yours={s_cw:.1f} expected={p_cw:.1f}")
+        except Exception:
+            pass
+
+    # --- Merge ---
+    if fmt_options.get("merge") and p_wb and s_wb:
+        try:
+            p_ws = p_wb[prof_cell.parent.title]
+            s_ws = s_wb[stud_cell.parent.title]
+            coord = prof_cell.coordinate
+            p_merged = next((str(r) for r in p_ws.merged_cells.ranges if coord in r), None)
+            s_merged = next((str(r) for r in s_ws.merged_cells.ranges if coord in r), None)
+            if p_merged != s_merged:
+                issues.append(f"Merge mismatch: yours='{s_merged or 'not merged'}' expected='{p_merged or 'not merged'}'")
+        except Exception:
+            pass
+
+    # Fill Color intentionally excluded (used for grading markers)
     return (len(issues) == 0), issues
 
 # ──────────────────────────────────────────────
-# 7. Sparkline Check (unchanged)
+# 7. Sparkline Check
 # ──────────────────────────────────────────────
-def check_sparkline_advanced(p_cache, s_cache, cell_coord):
-    def extract_xml_info(xml_cache, target_cell):
+def build_sheet_xml_map(zip_bytes):
+    """
+    4번 fix: workbook.xml을 파싱해서 시트이름 → XML경로 매핑을 반환.
+    예: {"Sales": "xl/worksheets/sheet2.xml", "Summary": "xl/worksheets/sheet1.xml"}
+    sheet1.xml 번호 순서가 시트 표시 순서와 다를 수 있어서 이 매핑이 필요.
+    """
+    sheet_map = {}
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
+            # 1) xl/workbook.xml 에서 sheetId → rId 매핑
+            wb_xml = z.read('xl/workbook.xml').decode('utf-8', errors='replace')
+            wb_tree = etree.fromstring(wb_xml.encode())
+            WB_NS = {'main': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+            sheets_elem = wb_tree.findall('.//main:sheet', WB_NS)
+
+            # 2) xl/_rels/workbook.xml.rels 에서 rId → XML경로 매핑
+            rels_xml = z.read('xl/_rels/workbook.xml.rels').decode('utf-8', errors='replace')
+            rels_tree = etree.fromstring(rels_xml.encode())
+            RELS_NS = {'r': 'http://schemas.openxmlformats.org/package/2006/relationships'}
+            rid_to_path = {}
+            for rel in rels_tree.findall('r:Relationship', RELS_NS):
+                rid  = rel.get('Id')
+                path = rel.get('Target')
+                if not path.startswith('xl/'):
+                    path = f"xl/{path}"
+                rid_to_path[rid] = path
+
+            # 3) 시트이름 → XML경로
+            for sh in sheets_elem:
+                name = sh.get('name')
+                rid  = sh.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
+                if name and rid and rid in rid_to_path:
+                    sheet_map[name] = rid_to_path[rid]
+    except Exception as e:
+        st.warning(f"[Sheet map error] {e}")
+    return sheet_map
+
+
+def build_xml_cache(zip_bytes, sheet_map):
+    """
+    4번 fix: 시트이름을 키로 하는 XML 캐시 반환.
+    예: {"Sales": "<xml...>", "Summary": "<xml...>"}
+    """
+    cache = {}
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
+            for sheet_name, xml_path in sheet_map.items():
+                if xml_path in z.namelist():
+                    cache[sheet_name] = z.read(xml_path).decode('utf-8', errors='replace')
+    except Exception as e:
+        st.warning(f"[XML cache error] {e}")
+    return cache
+
+
+def check_sparkline_advanced(p_cache, s_cache, cell_coord, sheet_name=None):
+    """
+    4번 fix: p_cache/s_cache가 {sheet_name: xml_content} 구조일 때
+    sheet_name으로 정확히 찾아서 파싱.
+    """
+    def extract_xml_info(xml_cache, target_cell, sn):
         try:
             clean_cell = target_cell.replace('$', '').upper()
-            for xml_path, xml_content in xml_cache.items():
+            NS = {
+                "x14": "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main",
+                "xm":  "http://schemas.microsoft.com/office/excel/2006/main",
+            }
+            # 4번 fix: sheet_name 키로 정확하게 찾기, 없으면 전체 순회
+            contents = []
+            if sn and sn in xml_cache:
+                contents = [xml_cache[sn]]
+            else:
+                contents = list(xml_cache.values())
+
+            for xml_content in contents:
                 tree = etree.fromstring(xml_content.encode())
-                NS = {
-                    "x14": "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main",
-                    "xm":  "http://schemas.microsoft.com/office/excel/2006/main",
-                }
                 for sp in tree.findall('.//x14:sparkline', NS):
                     sq_elem = sp.find('xm:sqref', NS)
                     f_elem  = sp.find('xm:f',     NS)
@@ -148,20 +290,20 @@ def check_sparkline_advanced(p_cache, s_cache, cell_coord):
                         return {
                             "range":       f_elem.text.strip(),
                             "type":        grp.get("type", "line"),
-                            "markers":     grp.get("markers", "0") == "1",
-                            "high_point":  grp.get("highPoint", "0") == "1",
-                            "low_point":   grp.get("lowPoint", "0") == "1",
+                            "markers":     grp.get("markers",    "0") == "1",
+                            "high_point":  grp.get("highPoint",  "0") == "1",
+                            "low_point":   grp.get("lowPoint",   "0") == "1",
                             "first_point": grp.get("firstPoint", "0") == "1",
-                            "last_point":  grp.get("lastPoint", "0") == "1",
-                            "negative":    grp.get("negative", "0") == "1",
+                            "last_point":  grp.get("lastPoint",  "0") == "1",
+                            "negative":    grp.get("negative",   "0") == "1",
                         }
             return None
         except Exception as e:
             st.warning(f"[Sparkline Error] {e}")
             return None
 
-    p_info = extract_xml_info(p_cache, cell_coord)
-    s_info = extract_xml_info(s_cache, cell_coord)
+    p_info = extract_xml_info(p_cache, cell_coord, sheet_name)
+    s_info = extract_xml_info(s_cache, cell_coord, sheet_name)
     if not p_info: return "Skip", None, None, None
     if not s_info: return False, "Missing", "Sparkline Object", "Sparkline is missing."
 
@@ -179,12 +321,12 @@ def check_sparkline_advanced(p_cache, s_cache, cell_coord):
 # ──────────────────────────────────────────────
 # 8. Unified Grading Dispatcher
 # ──────────────────────────────────────────────
-def grade_cell(mode, p_wb_f, p_wb_v, s_wb_f, s_wb_v, p_cache, s_cache, sn, c):
+def grade_cell(mode, p_wb_f, p_wb_v, s_wb_f, s_wb_v, p_cache, s_cache, sn, c, fmt_options=None):
     """
     Returns: (is_correct: bool, stud_ans_str, prof_ans_str, issues: list[str])
     """
     # Check sparkline first (always)
-    is_sl, s_ans, p_ans, msg = check_sparkline_advanced(p_cache, s_cache, c)
+    is_sl, s_ans, p_ans, msg = check_sparkline_advanced(p_cache, s_cache, c, sheet_name=sn)
     if is_sl != "Skip":
         return (bool(is_sl), f"[Sparkline] {s_ans}", f"[Sparkline] {p_ans}", [msg] if msg else [])
 
@@ -193,7 +335,7 @@ def grade_cell(mode, p_wb_f, p_wb_v, s_wb_f, s_wb_v, p_cache, s_cache, sn, c):
     pv = p_wb_v[sn][c].value
     sv = s_wb_v[sn][c].value
 
-    p_cell_fmt = p_wb_f[sn][c]  # openpyxl cell object with formatting
+    p_cell_fmt = p_wb_f[sn][c]
     s_cell_fmt = s_wb_f[sn][c]
 
     if mode == "value_only":
@@ -202,12 +344,12 @@ def grade_cell(mode, p_wb_f, p_wb_v, s_wb_f, s_wb_v, p_cache, s_cache, sn, c):
         return ok, format_ans(sf, sv), format_ans(pf, pv), issues
 
     elif mode == "format_only":
-        ok, issues = check_format_equivalence(p_cell_fmt, s_cell_fmt)
+        ok, issues = check_format_equivalence(p_cell_fmt, s_cell_fmt, fmt_options=fmt_options, p_wb=p_wb_f, s_wb=s_wb_f)
         return ok, format_ans(sf, sv), format_ans(pf, pv), issues
 
     elif mode == "both":
         v_ok = check_value_equivalence(pf, sf, pv, sv)
-        f_ok, f_issues = check_format_equivalence(p_cell_fmt, s_cell_fmt)
+        f_ok, f_issues = check_format_equivalence(p_cell_fmt, s_cell_fmt, fmt_options=fmt_options, p_wb=p_wb_f, s_wb=s_wb_f)
         issues = []
         if not v_ok:
             issues.append(f"Value mismatch: yours='{format_ans(sf, sv)}' expected='{format_ans(pf, pv)}'")
@@ -253,19 +395,27 @@ Write concise diagnostic feedback (under 150 words) explaining:
 # ──────────────────────────────────────────────
 # 10. AI Rubric Auto-Generation
 # ──────────────────────────────────────────────
-def extract_sparkline_info_for_cell(p_cache, cell_coord):
+def extract_sparkline_info_for_cell(p_cache, cell_coord, sheet_name=None):
     """
     Re-uses the XML parsing logic to extract sparkline metadata for a given cell.
+    4번 fix: sheet_name 키로 정확한 시트 XML을 먼저 찾음.
     Returns a dict if sparkline found, None otherwise.
     """
     try:
         clean_cell = cell_coord.replace('$', '').upper()
-        for xml_path, xml_content in p_cache.items():
+        NS = {
+            "x14": "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main",
+            "xm":  "http://schemas.microsoft.com/office/excel/2006/main",
+        }
+        # sheet_name 키로 먼저 찾고, 없으면 전체 순회
+        contents = []
+        if sheet_name and sheet_name in p_cache:
+            contents = [p_cache[sheet_name]]
+        else:
+            contents = list(p_cache.values())
+
+        for xml_content in contents:
             tree = etree.fromstring(xml_content.encode())
-            NS = {
-                "x14": "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main",
-                "xm":  "http://schemas.microsoft.com/office/excel/2006/main",
-            }
             for sp in tree.findall('.//x14:sparkline', NS):
                 sq_elem = sp.find('xm:sqref', NS)
                 f_elem  = sp.find('xm:f',     NS)
@@ -305,7 +455,7 @@ def generate_rubric(check_map, p_wb_f, p_wb_v, p_cache=None):
                 v = p_wb_v[sn][c].value
 
                 # Check if this cell has a sparkline (value/formula will be None)
-                sl_info = extract_sparkline_info_for_cell(p_cache, c) if p_cache else None
+                sl_info = extract_sparkline_info_for_cell(p_cache, c, sheet_name=sn) if p_cache else None
 
                 if sl_info:
                     # Sparkline cell — pass rich metadata so GPT understands it
@@ -337,40 +487,38 @@ def generate_rubric(check_map, p_wb_f, p_wb_v, p_cache=None):
     if not cell_data:
         return {}, ""
 
-    prompt = f"""You are an Excel course instructor. Analyze the following answer key cells and generate a grading rubric.
+    prompt = f"""You are an Excel course instructor. Analyze the following answer key cells and generate a concise grading rubric.
 Each cell entry includes a "type" field: "formula", "value", or "sparkline".
 For sparkline cells, use the sparkline_type and sparkline_range fields to understand what is being tested.
 
 Answer Key Data:
 {json.dumps(cell_data, ensure_ascii=False, indent=2)}
 
-For each cell, identify:
-1. What Excel skill is being tested (e.g., VLOOKUP, SUM, Sparkline - Line Chart, Sparkline - Column with Markers, etc.)
-2. A rubric criterion name (short, max 6 words)
-3. Suggested point value (suggest reasonable values that total ~100)
-4. What common mistakes to watch for
+Instructions:
+- Group cells that test the SAME skill and criterion into one rubric item.
+- Keep criterion names short (max 5 words).
+- Keep common_mistakes brief (max 10 words).
+- Suggested points should total ~100 across all items.
 
 Return ONLY a valid JSON object in this exact format, no extra text:
 {{
-  "rubric_items": [
+  "rubric_groups": [
     {{
-      "sheet": "Sheet1",
-      "cell": "B5",
-      "skill": "VLOOKUP Function",
-      "criterion": "Correct VLOOKUP usage",
-      "points": 10,
-      "common_mistakes": "Wrong lookup range or missing absolute reference"
+      "cells": [{{"sheet": "Sheet1", "cell": "B2"}}, {{"sheet": "Sheet1", "cell": "B3"}}],
+      "skill": "SUM Function",
+      "criterion": "Correct SUM range",
+      "points": 20,
+      "common_mistakes": "Wrong range or hardcoded value"
     }},
     {{
-      "sheet": "Sheet1",
-      "cell": "G5",
-      "skill": "Sparkline - Line Chart",
-      "criterion": "Correct sparkline data range",
-      "points": 10,
-      "common_mistakes": "Wrong data range or incorrect sparkline type selected"
+      "cells": [{{"sheet": "Sheet1", "cell": "C5"}}],
+      "skill": "VLOOKUP",
+      "criterion": "Correct VLOOKUP usage",
+      "points": 15,
+      "common_mistakes": "Missing absolute reference"
     }}
   ],
-  "task_summary": "Brief description of what this lab is testing overall"
+  "task_summary": "One sentence describing what this lab tests"
 }}"""
 
     try:
@@ -386,15 +534,17 @@ Return ONLY a valid JSON object in this exact format, no extra text:
         raw = re.sub(r'\s*```$',     '', raw)
         rubric_data = json.loads(raw)
 
+        # rubric_map: (sheet, cell) → group item (각 셀에서 자기 그룹 찾을 수 있도록)
         rubric_map = {}
-        for item in rubric_data.get("rubric_items", []):
-            key = (item["sheet"], item["cell"])
-            rubric_map[key] = item
+        for group in rubric_data.get("rubric_groups", []):
+            for cell_ref in group.get("cells", []):
+                key = (cell_ref["sheet"], cell_ref["cell"])
+                rubric_map[key] = group
 
-        return rubric_map, rubric_data.get("task_summary", "")
+        return rubric_map, rubric_data.get("task_summary", ""), rubric_data.get("rubric_groups", [])
     except Exception as e:
         st.warning(f"Rubric generation failed: {e}")
-        return {}, ""
+        return {}, "", []
 
 # ──────────────────────────────────────────────
 # 11. PDF Report
@@ -487,7 +637,9 @@ if 'grading_done' not in st.session_state:
         'total_questions': 0,
         'rubric_map': {},
         'rubric_summary': '',
+        'rubric_groups': [],
         'color_mode_map': {},
+        'scanned_colors': set(),
     })
 
 # ──────────────────────────────────────────────
@@ -537,63 +689,49 @@ student_files = c2.file_uploader("2. Upload Student File(s)", type=['xlsx'], acc
 # 16. Color → Scoring Mode Mapping UI
 # ──────────────────────────────────────────────
 if prof_file and student_files:
-    st.subheader("🎨 Step 1: Assign Scoring Mode to Each Answer Color")
-    st.caption(
-        "The professor's file is scanned for colored cells. "
-        "For each color found, assign its scoring mode. "
-        "**All active colors are graded in a single run — no rerun needed.**"
-    )
+    st.subheader("🎨 Step 1: Assign Colors to Each Scoring Mode")
+    st.caption("Select one color per scoring mode. Each color can only be used once.")
 
-    # Read professor's file once to detect which standard colors are used
-    # Must use read_only=False to reliably access fill formatting
-    p_bytes_peek = prof_file.read()
-    prof_file.seek(0)
-    p_wb_peek = load_workbook(io.BytesIO(p_bytes_peek), read_only=False)
-    used_colors = set()
-    for sn in p_wb_peek.sheetnames:
-        for row in p_wb_peek[sn].iter_rows():
-            for cell in row:
-                if cell.fill and cell.fill.fill_type == 'solid':
-                    rgb = str(cell.fill.start_color.rgb)[-6:].upper()
-                    used_colors.add(rgb)
-    p_wb_peek.close()
+    NONE = "--- None ---"
+    color_names = [NONE] + list(STANDARD_COLORS.keys())
 
-    # Only show colors that actually appear in the professor's file
-    active_standard = [(name, hx) for name, hx in STANDARD_COLORS.items()
-                       if hx.lstrip('#').upper() in used_colors]
+    c1, c2, c3 = st.columns(3)
+    with c3:
+        st.markdown("**🔢🎨 Both**")
+        both_color = st.selectbox("bc", color_names, key="sel_both", label_visibility="collapsed")
 
-    color_mode_map = {}   # { hex_upper: mode_string }
+    restricted = {both_color} if both_color != NONE else set()
+    remaining  = [c for c in color_names if c not in restricted]
+
+    with c1:
+        st.markdown("**🔢 Value Only**")
+        value_color = st.selectbox("vc", remaining, key="sel_value", label_visibility="collapsed")
+    with c2:
+        # value_color가 NONE이 아닐 때만 제외, NONE은 항상 포함
+        fmt_opts_list = [c for c in remaining if c == NONE or c != value_color]
+        st.markdown("**🎨 Format Only**")
+        format_color = st.selectbox("fc", fmt_opts_list, key="sel_format", label_visibility="collapsed")
+
+    # Color swatches
+    sw1, sw2, sw3 = st.columns(3)
+    for col, chosen in [(sw1, value_color), (sw2, format_color), (sw3, both_color)]:
+        if chosen != NONE:
+            col.markdown(
+                f"<div style='background:{STANDARD_COLORS[chosen]};height:14px;border-radius:4px;'></div>",
+                unsafe_allow_html=True
+            )
+
+    # Build color_mode_map
+    color_mode_map = {}
     active_colors  = []
+    for chosen, mode in [(value_color, "value_only"), (format_color, "format_only"), (both_color, "both")]:
+        if chosen != NONE:
+            hex_upper = STANDARD_COLORS[chosen].lstrip('#').upper()
+            color_mode_map[hex_upper] = [mode]
+            active_colors.append(chosen)
 
-    if not active_standard:
-        st.warning("⚠️ No standard colored cells found in the professor's file. Please fill answer cells with one of the 10 standard colors.")
-    else:
-        # Render one column per detected color — compact table-like row
-        n = len(active_standard)
-        grid = st.columns(n)
-        for idx, (name, hex_val) in enumerate(active_standard):
-            hex_upper = hex_val.lstrip('#').upper()
-            with grid[idx]:
-                # Color swatch
-                st.markdown(
-                    f"<div style='background:{hex_val};height:18px;border-radius:4px;margin-bottom:6px;'></div>",
-                    unsafe_allow_html=True
-                )
-                mode = st.selectbox(
-                    label=name,
-                    options=SCORING_MODES,
-                    format_func=lambda x: SCORING_LABELS[x],
-                    key=f"mode_{name}",
-                )
-                color_mode_map[hex_upper] = [mode]   # store as list for uniform downstream handling
-                active_colors.append(name)
-
-        # Summary preview so professor can verify at a glance
-        summary_md = "  |  ".join(
-            f"<span style='color:{STANDARD_COLORS[n]};font-weight:bold'>■</span> {n} → {SCORING_LABELS[color_mode_map[STANDARD_COLORS[n].lstrip('#').upper()][0]]}"
-            for n in active_colors
-        )
-        st.markdown(f"**Active mapping:** {summary_md}", unsafe_allow_html=True)
+    if not active_colors:
+        st.warning("⚠️ Please select at least one color.")
 
     # ──────────────────────────────────────────
     # 17. AI Rubric Generation (optional, before grading)
@@ -602,17 +740,15 @@ if prof_file and student_files:
     st.subheader("🤖 Step 2: AI Rubric Auto-Generation (Optional)")
     if st.button("✨ Auto-Generate Rubric from Professor's File", disabled=(not active_colors)):
         with st.spinner("Analyzing formulas and generating rubric..."):
+            prof_file.seek(0)           # ← 9번 fix: 읽기 전에 항상 seek(0)
             p_bytes_r = prof_file.read()
-            prof_file.seek(0)
+            prof_file.seek(0)           # 다음 읽기를 위해 복원
             p_wb_f_r = load_workbook(io.BytesIO(p_bytes_r), data_only=False, read_only=False)
             p_wb_v_r = load_workbook(io.BytesIO(p_bytes_r), data_only=True,  read_only=False)
 
-            # Extract XML cache for sparkline detection
-            with zipfile.ZipFile(io.BytesIO(p_bytes_r)) as z:
-                p_cache_r = {
-                    f: z.read(f).decode('utf-8', errors='replace')
-                    for f in z.namelist() if 'xl/worksheets/sheet' in f
-                }
+            # 4번 fix: 시트이름 기반 XML 캐시
+            p_sheet_map_r = build_sheet_xml_map(p_bytes_r)
+            p_cache_r     = build_xml_cache(p_bytes_r, p_sheet_map_r)
 
             # Build check_map using all colored cells
             temp_check_map = {}
@@ -628,30 +764,69 @@ if prof_file and student_files:
                     temp_check_map[sn] = cells
 
             # Pass p_cache_r so sparkline cells are properly detected
-            rubric_map, rubric_summary = generate_rubric(temp_check_map, p_wb_f_r, p_wb_v_r, p_cache=p_cache_r)
-            st.session_state['rubric_map'] = rubric_map
+            rubric_map, rubric_summary, rubric_groups = generate_rubric(temp_check_map, p_wb_f_r, p_wb_v_r, p_cache=p_cache_r)
+            st.session_state['rubric_map']     = rubric_map
             st.session_state['rubric_summary'] = rubric_summary
+            st.session_state['rubric_groups']  = rubric_groups
 
     if st.session_state.get('rubric_summary'):
-        st.success(f"📝 Task Summary: {st.session_state['rubric_summary']}")
-        if st.session_state.get('rubric_map'):
-            rubric_df = pd.DataFrame([
-                {
-                    "Sheet": k[0], "Cell": k[1],
-                    "Skill": v["skill"],
-                    "Criterion": v["criterion"],
-                    "Points": v["points"],
-                    "Common Mistakes": v.get("common_mistakes", "")
+        st.success(f"📝 {st.session_state['rubric_summary']}")
+        groups = st.session_state.get('rubric_groups', [])
+        if groups:
+            rubric_rows = []
+            for idx, g in enumerate(groups, 1):
+                cells_str = ", ".join(
+                    f"{c['sheet']}!{c['cell']}" if len(set(c['sheet'] for c in g['cells'])) > 1
+                    else c['cell']
+                    for c in g['cells']
+                )
+                rubric_rows.append({
+                    "#":              idx,
+                    "Cells":          cells_str,
+                    "Skill":          g["skill"],
+                    "Criterion":      g["criterion"],
+                    "Pts":            g["points"],
+                    "Common Mistakes": g.get("common_mistakes", ""),
+                })
+            rubric_df = pd.DataFrame(rubric_rows)
+            total_pts = rubric_df["Pts"].sum()
+            st.dataframe(
+                rubric_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "#":               st.column_config.NumberColumn(width="small"),
+                    "Cells":           st.column_config.TextColumn(width="medium"),
+                    "Skill":           st.column_config.TextColumn(width="medium"),
+                    "Criterion":       st.column_config.TextColumn(width="medium"),
+                    "Pts":             st.column_config.NumberColumn(width="small"),
+                    "Common Mistakes": st.column_config.TextColumn(width="large"),
                 }
-                for k, v in st.session_state['rubric_map'].items()
-            ])
-            st.dataframe(rubric_df, use_container_width=True, hide_index=True)
+            )
+            st.caption(f"Total: **{total_pts}pts** across **{len(groups)}** criteria")
 
     # ──────────────────────────────────────────
     # 18. Grading Button
     # ──────────────────────────────────────────
     st.divider()
     st.subheader("📊 Step 3: Start Grading")
+
+    # --- Format Options ---
+    with st.expander("🎨 Format Grading Options (applies to Format Only / Both modes)", expanded=False):
+        st.caption("Select which formatting attributes to check. Unchecked items are ignored during grading.")
+        fo1, fo2, fo3 = st.columns(3)
+        fmt_options = {
+            "number_format": fo1.checkbox("Number Format",  value=True),
+            "font_name":     fo1.checkbox("Font Name",      value=False),
+            "font_bold":     fo1.checkbox("Bold",           value=True),
+            "font_color":    fo2.checkbox("Font Color",     value=True),
+            "font_size":     fo2.checkbox("Font Size",      value=True),
+            "border":        fo2.checkbox("Border",         value=True),
+            "alignment":     fo3.checkbox("Alignment",      value=False),
+            "wrap_text":     fo3.checkbox("Wrap Text",      value=False),
+            "cell_size":     fo3.checkbox("Cell Size (Row Height / Column Width)", value=False),
+            "merge":         fo3.checkbox("Cell Merge",     value=False),
+        }
 
     # --- Pre-check Settings ---
     with st.expander("⚙️ Pre-check Settings (File Name & Sheet Name Validation)", expanded=True):
@@ -660,25 +835,53 @@ if prof_file and student_files:
             st.markdown("**📄 File Name Format**")
             filename_format = st.text_input(
                 "Expected filename format (use [UID] as placeholder for student ID)",
-                value="[UID]_Lab_3.xlsx",
-                help="e.g. '[UID]_Lab_3.xlsx' → matches 'u1234567_Lab_3.xlsx'\nLeave blank to skip file name check."
+                value="[UID]_Lab_1.xlsx",
+                help="e.g. '[UID]_Lab_1.xlsx' → matches 'u1234567_Lab_1.xlsx'\nLeave blank to skip."
             )
+            st.markdown("**📋 Sheet Name Check**")
+            check_sheet_names = st.checkbox("Check sheet names match professor's file", value=True)
         with pc_col2:
             st.markdown("**📉 Penalty Points**")
-            penalty_filename = st.number_input("File name mismatch penalty (pts)", min_value=0, max_value=20, value=5, step=1)
-            penalty_sheet    = st.number_input("Sheet name mismatch penalty (pts, per missing sheet)", min_value=0, max_value=20, value=5, step=1)
-
-        st.caption("Penalties are subtracted from the final score and shown in the Summary table.")
+            penalty_filename = st.number_input(
+                "File name mismatch penalty (pts)",
+                min_value=0, max_value=50, value=0, step=1,
+                help="Set to 0 to show warning only without deducting points"
+            )
+            penalty_sheet = st.number_input(
+                "Sheet name mismatch penalty (pts, per missing sheet)",
+                min_value=0, max_value=50, value=0, step=1,
+                help="Set to 0 to show warning only without deducting points"
+            )
+        st.caption("💡 Set penalty to 0 to show warnings only without affecting the score.")
 
     if st.button("🚀 Start Grading Process", use_container_width=True, disabled=(not active_colors)):
+
+        # 2번 + 3번 fix: 새 채점 시작 시 이전 결과 및 color_entries 초기화
+        st.session_state.update({
+            'grading_done':    False,
+            'summary_df':      pd.DataFrame(),
+            'all_wrongs_list': [],
+            'total_questions': 0,
+            'zip_data':        None,
+            'rubric_map':      {},
+            'rubric_summary':  '',
+            'rubric_groups':   [],
+        })
+        # color_entries는 유지 (같은 Lab 재채점 시 편의)
+        # 완전히 새 Lab이면 파일 재업로드 시 자동으로 리셋됨
+
+        # 9번 fix: 읽기 전에 항상 seek(0)
+        prof_file.seek(0)
         p_bytes = prof_file.read()
+        prof_file.seek(0)  # 혹시 이후에 또 읽을 경우를 위해 복원
 
         with zipfile.ZipFile(io.BytesIO(p_bytes)) as z:
-            p_cache = {
-                f: z.read(f).decode('utf-8', errors='replace')
-                for f in z.namelist() if 'xl/worksheets/sheet' in f
-            }
+            # 4번 fix: 시트이름 기반 캐시
+            p_sheet_map = build_sheet_xml_map(p_bytes)
+            p_cache     = build_xml_cache(p_bytes, p_sheet_map)
 
+        # 1번 fix: 교수 파일은 bytes를 재사용해 두 번 로딩하되
+        # 루프 밖에서 한 번만 로딩 (학생 파일은 루프 안에서 로딩 후 즉시 close)
         p_wb_f = load_workbook(io.BytesIO(p_bytes), data_only=False, read_only=False)
         p_wb_v = load_workbook(io.BytesIO(p_bytes), data_only=True,  read_only=False)
 
@@ -701,11 +904,7 @@ if prof_file and student_files:
         uid_re = re.compile(r'[uU]\d{7}')
         progress_bar = st.progress(0)
 
-        # Extract professor's sheet names for sheet name validation
-        prof_sheetnames = set(p_wb_f.sheetnames)
-
-        # Build filename regex from user-defined format
-        # e.g. "[UID]_Lab_3.xlsx" → r"[uU]\d{7}_Lab_3\.xlsx"
+        # Build filename regex from format string
         def build_filename_regex(fmt):
             if not fmt:
                 return None
@@ -713,46 +912,45 @@ if prof_file and student_files:
             escaped = escaped.replace(r'\[UID\]', r'[uU]\d{7}')
             return re.compile(escaped, re.IGNORECASE)
 
-        filename_regex = build_filename_regex(filename_format)
+        filename_regex   = build_filename_regex(filename_format)
+        prof_sheetnames  = set(p_wb_f.sheetnames)
 
         for i, s_file in enumerate(student_files):
             with st.status(f"Grading {s_file.name}...", expanded=True) as status:
                 s_bytes = s_file.read()
-                with zipfile.ZipFile(io.BytesIO(s_bytes)) as z:
-                    s_cache = {
-                        f: z.read(f).decode('utf-8', errors='replace')
-                        for f in z.namelist() if 'xl/worksheets/sheet' in f
-                    }
+                s_sheet_map = build_sheet_xml_map(s_bytes)
+                s_cache     = build_xml_cache(s_bytes, s_sheet_map)
 
                 s_wb_f = load_workbook(io.BytesIO(s_bytes), data_only=False, read_only=False)
                 s_wb_v = load_workbook(io.BytesIO(s_bytes), data_only=True,  read_only=False)
                 uid = uid_re.search(s_file.name).group() if uid_re.search(s_file.name) else s_file.name
 
-                # ── Pre-check: filename & sheet names ──────────────
+                # ── Pre-check ──────────────────────────────────────
                 precheck_warnings = []
                 penalty = 0
 
-                # 1) File name — must match professor-defined format
+                # 1) File name
                 if filename_regex:
                     if not filename_regex.search(s_file.name):
-                        msg = f"File name mismatch: expected format '{filename_format}', got '{s_file.name}' (-{penalty_filename}pts)"
+                        msg = f"File name mismatch: expected '{filename_format}', got '{s_file.name}'"
                         precheck_warnings.append(msg)
                         penalty += penalty_filename
-                        st.warning(f"⚠️ {msg}")
+                        st.warning(f"⚠️ {msg}" + (f" (-{penalty_filename}pts)" if penalty_filename > 0 else ""))
                     else:
                         st.success(f"✅ File name OK: {s_file.name}")
 
-                # 2) Sheet names — must exactly match professor's sheet names
-                stud_sheetnames = set(s_wb_f.sheetnames)
-                missing_sheets  = prof_sheetnames - stud_sheetnames
-                if missing_sheets:
-                    for ms in sorted(missing_sheets):
-                        msg = f"Sheet '{ms}' missing or renamed (-{penalty_sheet}pts)"
-                        precheck_warnings.append(msg)
-                        penalty += penalty_sheet
-                        st.warning(f"⚠️ {msg}")
-                else:
-                    st.success("✅ All sheet names match")
+                # 2) Sheet names
+                if check_sheet_names:
+                    stud_sheetnames = set(s_wb_f.sheetnames)
+                    missing_sheets  = prof_sheetnames - stud_sheetnames
+                    if missing_sheets:
+                        for ms in sorted(missing_sheets):
+                            msg = f"Sheet '{ms}' missing or renamed"
+                            precheck_warnings.append(msg)
+                            penalty += penalty_sheet
+                            st.warning(f"⚠️ {msg}" + (f" (-{penalty_sheet}pts)" if penalty_sheet > 0 else ""))
+                    else:
+                        st.success("✅ All sheet names match")
                 # ───────────────────────────────────────────────────
 
                 correct = 0
@@ -768,7 +966,8 @@ if prof_file and student_files:
 
                         for mode in modes:
                             is_correct, stud_ans, prof_ans, issues = grade_cell(
-                                mode, p_wb_f, p_wb_v, s_wb_f, s_wb_v, p_cache, s_cache, sn, c
+                                mode, p_wb_f, p_wb_v, s_wb_f, s_wb_v, p_cache, s_cache, sn, c,
+                                fmt_options=fmt_options
                             )
                             stud_ans_str = stud_ans  # same cell, same display value
                             prof_ans_str = prof_ans
@@ -793,15 +992,28 @@ if prof_file and student_files:
 
                 status.update(label=f"✅ {uid} Done!", state="complete", expanded=False)
 
-            final_score = max(correct - penalty, 0)
+            # 1번 fix: 학생 워크북 즉시 해제 → 메모리 누적 방지
+            try:
+                s_wb_f.close()
+                s_wb_v.close()
+            except Exception:
+                pass
+
             summary_results.append({
-                "UnID":       uid,
-                "Score":      f"{correct}/{total_qs}",
-                "Raw":        correct,
-                "Penalty":    f"-{penalty}pts" if penalty > 0 else "—",
-                "Warnings":   " | ".join(precheck_warnings) if precheck_warnings else "✅ OK",
+                "UnID":     uid,
+                "Score":    f"{correct}/{total_qs}",
+                "Raw":      correct,
+                "Penalty":  f"-{penalty}pts" if penalty > 0 else "—",
+                "Warnings": " | ".join(precheck_warnings) if precheck_warnings else "✅ OK",
             })
             progress_bar.progress((i + 1) / len(student_files))
+
+        # 1번 fix: 교수 워크북도 채점 완료 후 해제
+        try:
+            p_wb_f.close()
+            p_wb_v.close()
+        except Exception:
+            pass
 
         st.session_state.update({
             'summary_df': pd.DataFrame(summary_results).sort_values("Raw", ascending=False),
@@ -879,19 +1091,27 @@ if st.session_state['grading_done']:
         if st.button("📄 Step 1: Generate AI Reports", use_container_width=True):
             zip_buffer = io.BytesIO()
             rubric_map = st.session_state.get('rubric_map', {})
+            failed = []
             with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zf:
                 for uid in st.session_state['summary_df']['UnID'].tolist():
                     with st.spinner(f"Generating AI Feedback for {uid}..."):
-                        s_errs  = [e for e in st.session_state['all_wrongs_list'] if e['UnID'] == uid]
-                        s_score = st.session_state['summary_df'][
-                            st.session_state['summary_df']['UnID'] == uid
-                        ]['Score'].values[0]
-                        pdf_data = create_pdf_report(uid, s_score, s_errs, rubric_map=rubric_map)
-                        zf.writestr(f"Report_{uid}.pdf", pdf_data)
+                        try:
+                            s_errs  = [e for e in st.session_state['all_wrongs_list'] if e['UnID'] == uid]
+                            s_score = st.session_state['summary_df'][
+                                st.session_state['summary_df']['UnID'] == uid
+                            ]['Score'].values[0]
+                            pdf_data = create_pdf_report(uid, s_score, s_errs, rubric_map=rubric_map)
+                            zf.writestr(f"Report_{uid}.pdf", pdf_data)
+                        except Exception as e:
+                            failed.append(uid)
+                            st.warning(f"⚠️ Failed to generate report for {uid}: {e}")
             st.session_state['zip_data'] = zip_buffer.getvalue()
-            st.success("✅ All reports generated!")
+            if failed:
+                st.warning(f"⚠️ {len(failed)} report(s) failed: {', '.join(failed)}")
+            else:
+                st.success("✅ All reports generated!")
 
-        if 'zip_data' in st.session_state:
+        if 'zip_data' in st.session_state and st.session_state['zip_data'] is not None:
             st.download_button(
                 label="📥 Download All PDF Reports (ZIP)",
                 data=st.session_state['zip_data'],
