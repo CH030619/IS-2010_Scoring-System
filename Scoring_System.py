@@ -909,17 +909,21 @@ if prof_file and student_files:
             rubric_edited = st.session_state.get('rubric_edited', [])
             rubric_total  = sum(g.get('points', 0) for g in rubric_edited) if rubric_edited else 0
             if rubric_total > 0 and total_qs > 0:
-                rubric_score = round((correct / total_qs) * rubric_total, 2)
+                rubric_score     = round((correct / total_qs) * rubric_total, 2)
                 rubric_score_str = f"{rubric_score} / {rubric_total}"
+                total_score      = round(max(rubric_score - penalty, 0), 2)
+                total_score_str  = f"{total_score} / {rubric_total}"
             else:
                 rubric_score_str = "N/A (no rubric)"
+                total_score_str  = "N/A (no rubric)"
 
             summary_results.append({
                 "UnID":          uid,
                 "Raw Score":     f"{correct}/{total_qs}",
                 "Rubric Score":  rubric_score_str,
-                "Raw":           correct,
                 "Penalty":       f"-{penalty}pts" if penalty > 0 else "—",
+                "Total Score":   total_score_str,
+                "Raw":           correct,
                 "Warnings":      " | ".join(precheck_warnings) if precheck_warnings else "✅ OK",
             })
             progress_bar.progress((i + 1) / len(student_files))
